@@ -485,6 +485,7 @@ const handleResetSelection = () => {
 }
 </script>
 
+
 <style scoped lang="scss">
 .control-panel {
   height: 100%;

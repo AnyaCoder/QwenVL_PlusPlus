@@ -67,16 +67,16 @@ class SegmentRequest(BaseModel):
     video_path: str
     filename: str
     frame_idx: int
-    obj_id: int
-    bbox: list[float]
+    obj_ids: list[int]
+    bboxes: list[list[float]]
     conf_threshold: float = 0.0
 
 class SegmentBatchRequest(BaseModel):
     video_path: str
     filename: str
     frame_indices: list[int]
-    obj_ids: list[int]
-    bboxes: list[list[float]]
+    obj_ids_list: list[list[int]]
+    bboxes_list: list[list[list[float]]]
     conf_threshold: float = 0.0
 
 class ScanFolderRequest(BaseModel):
@@ -84,7 +84,7 @@ class ScanFolderRequest(BaseModel):
 
 # ---------------------- Helper Functions ----------------------
 def overlay_mask(frame: np.ndarray, mask: np.ndarray, obj_id=None, alpha: float = 0.4, use_random_color=False) -> np.ndarray:
-    """改进的掩码覆盖函数，提供更丰富的颜色选择"""
+    """改进的掩码覆盖函数，确保非掩码区域完全保持不变"""
     mask = mask.squeeze()  # (1, H, W) -> (H, W)
     assert len(mask.shape) == 2, "Mask should be 2D (H, W)"
 
@@ -115,16 +115,17 @@ def overlay_mask(frame: np.ndarray, mask: np.ndarray, obj_id=None, alpha: float 
                 return np.array(extended_colors[color_idx])
     
     color = get_color(obj_id, use_random_color)
-    out = frame.copy().astype(np.float32)
-    colored_mask = np.zeros_like(out)
-    mask_area = mask > 0
+
+    frame = frame.astype(np.uint8)
+    
+    out = frame.copy()
+    mask_bool = mask > 0
     for c in range(3):
-        colored_mask[mask_area, c] = color[c] * 255
-    # 更平滑的混合
-    blend_mask = mask.astype(np.float32) * alpha
-    blend_mask_3d = np.stack([blend_mask] * 3, axis=-1)
-    out = out * (1 - blend_mask_3d) + colored_mask * blend_mask_3d
-    return out.astype(np.uint8)
+        out_channel = out[:, :, c].astype(np.float32)
+        out_channel[mask_bool] = out_channel[mask_bool] * (1 - alpha) + color[c] * 255 * alpha
+        out[:, :, c] = np.clip(out_channel, 0, 255).astype(np.uint8)
+    
+    return out
 
 def extract_frames_from_video(video_path: str):
     """Use FFmpeg to extract frames from the provided video and save them as JPEG files."""
@@ -188,11 +189,11 @@ def extract_frame_index(filename: str) -> int:
 
 # ---------------------- Core Segmentation Functions ---------------------
 def segment_image(req: SegmentRequest):
-    """Segment one image using SAM2 image predictor."""
+    """Segment one image with multiple bounding boxes using SAM2 image predictor."""
     try:
         image_path = os.path.join(req.video_path, req.filename)
         if not os.path.exists(image_path):
-            raise ValueError(f"Image file does not exist: {req.video_path}")
+            raise ValueError(f"Image file does not exist: {image_path}")
         
         image = Image.open(image_path)
         image = np.array(image.convert("RGB"))
@@ -200,37 +201,44 @@ def segment_image(req: SegmentRequest):
         # Initialize image predictor
         ML_MODELS["image_predictor"].set_image(image)
         
-        # Bounding box
-        box = np.array(req.bbox, dtype=np.float32)
+        # Convert all bboxes to numpy array
+        input_boxes = np.array(req.bboxes, dtype=np.float32)
         
-        # Predict mask
+        # Predict all masks in one call
         masks, scores, _ = ML_MODELS["image_predictor"].predict(
             point_coords=None,
             point_labels=None,
-            box=box[None, :],
+            box=input_boxes,
             multimask_output=False,
         )
         
-        # Get the best mask
-        mask = masks[0].astype(np.float32)
+        # masks shape: (num_boxes, 1, H, W)
+        masks = masks.squeeze(1)  # Remove the singleton dimension -> (num_boxes, H, W)
         
-        # Create overlay
-        overlay = overlay_mask(image, mask, req.obj_id)
+        # Create pairs of (obj_id, mask) and sort by obj_id
+        mask_data = list(zip(req.obj_ids, masks))
+        mask_data.sort(key=lambda x: x[0])  # Sort by obj_id ascending
         
-        return {str(req.frame_idx): encode_image_to_base64(overlay)}
+        # Start with original image
+        combined_overlay = image.copy()
+        
+        # Apply all masks in order (smaller obj_id first, larger obj_id will overlay on top)
+        for obj_id, mask in mask_data:
+            combined_overlay = overlay_mask(combined_overlay, mask, obj_id)
+        
+        return {str(req.frame_idx): encode_image_to_base64(combined_overlay)}
         
     except Exception as e:
-        logger.error(f"Image segmentation failed: {str(e)}")
+        logger.error(f"Multi-box image segmentation failed: {str(e)}")
         raise
 
 def segment_images(req: SegmentBatchRequest):
-    """Segment multiple images using SAM2 image predictor."""
+    """Segment multiple images using SAM2 image predictor with batch processing."""
     try:
         results = {}
         
         # Process each image
-        for i, (frame_idx, obj_idx, bbox) in enumerate(zip(req.frame_indices, req.obj_ids, req.bboxes)):
-            # For images, we use the same path for all (or could be adapted for multiple images)
+        for i, (frame_idx, obj_ids, bboxes) in enumerate(zip(req.frame_indices, req.obj_ids_list, req.bboxes_list)):
             image_path = os.path.join(req.video_path, req.filename)
             if not os.path.exists(image_path):
                 raise ValueError(f"Image file does not exist: {req.video_path}")
@@ -242,23 +250,32 @@ def segment_images(req: SegmentBatchRequest):
             image_predictor = SAM2ImagePredictor(ML_MODELS["image_predictor"])
             image_predictor.set_image(image)
             
-            # Bounding box
-            box = np.array(bbox, dtype=np.float32)
+            # Convert bboxes to numpy array
+            input_boxes = np.array(bboxes, dtype=np.float32)
             
-            # Predict mask
+            # Predict all masks in one call
             masks, scores, _ = image_predictor.predict(
                 point_coords=None,
                 point_labels=None,
-                box=box[None, :],
+                box=input_boxes,
                 multimask_output=False,
             )
             
-            # Get the best mask
-            mask = masks[0].astype(np.float32)
+            # masks shape: (num_boxes, 1, H, W)
+            masks = masks.squeeze(1)  # Remove the singleton dimension -> (num_boxes, H, W)
             
-            # Create overlay
-            overlay = overlay_mask(image, mask, obj_idx)
-            results[i] = encode_image_to_base64(overlay)
+            # Create pairs of (obj_id, mask) and sort by obj_id
+            mask_data = list(zip(obj_ids, masks))
+            mask_data.sort(key=lambda x: x[0])  # Sort by obj_id ascending
+            
+            # Start with original image
+            combined_overlay = image.copy()
+            
+            # Apply all masks in order
+            for obj_id, mask in mask_data:
+                combined_overlay = overlay_mask(combined_overlay, mask, obj_id)
+            
+            results[i] = encode_image_to_base64(combined_overlay)
         
         return results
         
