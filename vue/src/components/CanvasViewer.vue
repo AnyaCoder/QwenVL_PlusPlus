@@ -58,16 +58,20 @@
       </div>
 
       <!-- 坐标信息显示 -->
+      <!-- 修改坐标信息显示部分 -->
       <div v-if="selectedFrame && !imageError" class="coordinates-info">
-        <el-descriptions :column="3" border size="small">
+        <el-descriptions :column="2" border size="small">
           <el-descriptions-item label="当前帧">
             {{ selectedFrame.index }} - {{ selectedFrame.filename }}
           </el-descriptions-item>
-          <el-descriptions-item label="框选区域" :span="2">
-            [x: {{ bbox[0]?.toFixed(0) }}, y: {{ bbox[1]?.toFixed(0) }}, width: {{ bbox[2]?.toFixed(0) }}, height: {{ bbox[3]?.toFixed(0) }}]
-          </el-descriptions-item>
-          <el-descriptions-item label="图像尺寸" :span="2" v-if="imageDimensions.width">
+          <el-descriptions-item label="图像尺寸" v-if="imageDimensions.width">
             {{ imageDimensions.width }} × {{ imageDimensions.height }} 像素
+          </el-descriptions-item>
+          <el-descriptions-item label="框选数量" :span="2">
+            {{ currentBoxes.length }} 个框 (IDs: {{ currentObjIds.join(', ') }})
+          </el-descriptions-item>
+          <el-descriptions-item label="操作提示" :span="2">
+            继续框选可添加多个目标，每个框自动分配不同ID
           </el-descriptions-item>
         </el-descriptions>
       </div>
@@ -110,6 +114,11 @@ const bbox = ref([0, 0, 0, 0])
 const imageDimensions = ref({ width: 0, height: 0 })
 const displayDimensions = ref({ width: 0, height: 0 })
 const scaleFactor = ref({ x: 1, y: 1 })
+
+const currentBoxes = ref([]) // 存储所有框选区域
+const currentObjIds = ref([]) // 存储对应的obj_ids
+const activeBoxIndex = ref(-1) // 当前激活的框索引
+const nextObjId = ref(1) // 下一个可用的obj_id
 
 // 监听选中的帧变化
 watch(() => props.selectedFrame, async (newFrame) => {
@@ -283,7 +292,7 @@ const convertToImageCoordinates = (displayBbox) => {
   ]
 }
 
-// 鼠标事件处理
+// 替换现有的鼠标事件处理函数
 const handleMouseDown = (event) => {
   if (!props.selectedFrame || imageError.value) return
 
@@ -291,15 +300,121 @@ const handleMouseDown = (event) => {
   isSelecting.value = true
 
   if (selectionMode.value === 'point') {
+    // 点选模式逻辑保持不变
     startPoint.value = { x, y }
     endPoint.value = { x, y }
     updateBbox()
-    drawSelection()
+    drawAllBoxes() // 改为绘制所有框
     emitSelection()
   } else {
     startPoint.value = { x, y }
     endPoint.value = { x, y }
+    // 创建新框，分配新的obj_id
+    activeBoxIndex.value = currentBoxes.value.length
+    currentObjIds.value.push(nextObjId.value)
+    nextObjId.value++
   }
+}
+
+const handleMouseUp = () => {
+  if (!isSelecting.value) return
+
+  isSelecting.value = false
+
+  if (selectionMode.value === 'box') {
+    const startX = Math.min(startPoint.value.x, endPoint.value.x)
+    const startY = Math.min(startPoint.value.y, endPoint.value.y)
+    const endX = Math.max(startPoint.value.x, endPoint.value.x)
+    const endY = Math.max(startPoint.value.y, endPoint.value.y)
+    
+    const width = endX - startX
+    const height = endY - startY
+    
+    // 只保存有效大小的框
+    if (width > 5 && height > 5) {
+      const newBox = [startX, startY, width, height]
+      
+      if (activeBoxIndex.value >= 0 && activeBoxIndex.value < currentBoxes.value.length) {
+        // 更新现有框
+        currentBoxes.value[activeBoxIndex.value] = newBox
+      } else {
+        // 添加新框
+        currentBoxes.value.push(newBox)
+      }
+      
+      drawAllBoxes()
+      emitSelection()
+    } else {
+      // 移除无效的框
+      if (activeBoxIndex.value >= 0 && activeBoxIndex.value < currentBoxes.value.length) {
+        currentBoxes.value.splice(activeBoxIndex.value, 1)
+        currentObjIds.value.splice(activeBoxIndex.value, 1)
+      }
+    }
+    
+    activeBoxIndex.value = -1
+  }
+}
+
+// 新增：绘制所有框选区域
+const drawAllBoxes = () => {
+  if (!ctx.value || !canvasEl.value) return
+
+  clearCanvas()
+
+  // 绘制所有已保存的框
+  currentBoxes.value.forEach((box, index) => {
+    const [x, y, width, height] = box
+    const isActive = index === activeBoxIndex.value
+    
+    // 设置框样式
+    ctx.value.strokeStyle = isActive ? '#ff0000' : getColorByObjId(currentObjIds.value[index])
+    ctx.value.lineWidth = isActive ? 3 : 2
+    ctx.value.setLineDash(isActive ? [5, 5] : [])
+    
+    // 绘制框
+    ctx.value.strokeRect(x, y, width, height)
+    
+    // 添加半透明填充
+    ctx.value.fillStyle = isActive ? 'rgba(255, 0, 0, 0.1)' : `rgba(${getColorByObjId(currentObjIds.value[index], true)}, 0.1)`
+    ctx.value.fillRect(x, y, width, height)
+    
+    // 绘制obj_id标签
+    ctx.value.fillStyle = isActive ? '#ff0000' : getColorByObjId(currentObjIds.value[index])
+    ctx.value.font = '14px Arial'
+    ctx.value.fillText(`ID: ${currentObjIds.value[index]}`, x + 5, y + 15)
+  })
+
+  // 绘制当前正在拖拽的框（如果有）
+  if (isSelecting.value && selectionMode.value === 'box' && activeBoxIndex.value === -1) {
+    const [x, y, width, height] = bbox.value
+    ctx.value.strokeStyle = '#e6a23c'
+    ctx.value.lineWidth = 2
+    ctx.value.setLineDash([])
+    ctx.value.strokeRect(x, y, width, height)
+    ctx.value.fillStyle = 'rgba(230, 162, 60, 0.1)'
+    ctx.value.fillRect(x, y, width, height)
+  }
+}
+
+// 新增：根据obj_id获取颜色
+const getColorByObjId = (objId, asRGB = false) => {
+  const colors = [
+    '#e6a23c', '#67c23a', '#409eff', '#f56c6c', '#909399',
+    '#b37feb', '#ff85c0', '#5cdbd3', '#ff9c6e', '#fff566'
+  ]
+  const color = colors[(objId - 1) % colors.length]
+  
+  if (asRGB) {
+    // 将hex颜色转换为rgb字符串
+    const hex = color.replace('#', '')
+    const r = parseInt(hex.substr(0, 2), 16)
+    const g = parseInt(hex.substr(2, 2), 16)
+    const b = parseInt(hex.substr(4, 2), 16)
+    return `${r}, ${g}, ${b}`
+  }
+  
+  return color
 }
 
 const handleMouseMove = (event) => {
@@ -309,26 +424,6 @@ const handleMouseMove = (event) => {
   endPoint.value = { x, y }
   updateBbox()
   drawSelection()
-}
-
-const handleMouseUp = () => {
-  if (!isSelecting.value) return
-
-  isSelecting.value = false
-
-  if (selectionMode.value === 'box') {
-    // 确保宽度和高度为正数
-    const startX = Math.min(startPoint.value.x, endPoint.value.x)
-    const startY = Math.min(startPoint.value.y, endPoint.value.y)
-    const endX = Math.max(startPoint.value.x, endPoint.value.x)
-    const endY = Math.max(startPoint.value.y, endPoint.value.y)
-
-    startPoint.value = { x: startX, y: startY }
-    endPoint.value = { x: endX, y: endY }
-    updateBbox()
-    drawSelection()
-    emitSelection()
-  }
 }
 
 const handleMouseLeave = () => {
@@ -363,20 +458,31 @@ const updateBbox = () => {
 }
 
 // 发射选择事件
+// 修改：发射所有框的选择事件
 const emitSelection = () => {
-  const imageBbox = convertToImageCoordinates(bbox.value)
-  console.log('Display bbox:', bbox.value)
-  console.log('Image bbox:', imageBbox)
-  emit('selection-update', imageBbox)
+  const imageBoxes = currentBoxes.value.map(box => convertToImageCoordinates(box))
+  console.log('Display boxes:', currentBoxes.value)
+  console.log('Image boxes:', imageBoxes)
+  console.log('Obj IDs:', currentObjIds.value)
+  
+  emit('selection-update', {
+    bboxes: imageBoxes,
+    obj_ids: currentObjIds.value
+  })
 }
 
 // 重置选择
+// 修改：重置所有选择
 const resetSelection = () => {
   startPoint.value = { x: 0, y: 0 }
   endPoint.value = { x: 0, y: 0 }
   bbox.value = [0, 0, 0, 0]
+  currentBoxes.value = []
+  currentObjIds.value = []
+  activeBoxIndex.value = -1
+  nextObjId.value = 1
   clearCanvas()
-  emit('selection-update', [0, 0, 0, 0])
+  emitSelection()
 }
 
 // 图像加载事件

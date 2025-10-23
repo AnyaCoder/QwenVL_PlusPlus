@@ -47,7 +47,8 @@
               <el-col :span="8">
                 <ControlPanel
                   :selected-frame="selectedFrame"
-                  :bbox="currentBbox"
+                  :bboxes="currentBbox"
+                  :obj-ids="currentObjIds"
                   :folder-path="folderPath"
                   @reset-selection="handleResetSelection"
                   @segment-single="handleSegmentSingle"
@@ -74,6 +75,7 @@ const selectedFrame = ref(null)
 const currentBbox = ref([0, 0, 0, 0])
 const connected = ref(true)
 const segmentationResults = ref([])
+const currentObjIds = ref([])
 
 const handleFrameSelected = (frame) => {
   selectedFrame.value = frame
@@ -84,8 +86,9 @@ const handleFolderUpdate = (newPath) => {
   console.log('文件夹路径更新:', newPath)
 }
 
-const handleSelectionUpdate = (bbox) => {
-  currentBbox.value = bbox
+const handleSelectionUpdate = (selectionData) => {
+  currentBbox.value = selectionData.bboxes || [] // 改为数组
+  currentObjIds.value = selectionData.obj_ids || [] // 新增
 }
 
 const handleResetSelection = () => {

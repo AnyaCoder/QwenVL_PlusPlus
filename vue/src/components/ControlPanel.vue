@@ -8,7 +8,7 @@
       </template>
 
       <!-- 当前选择信息 -->
-      <div class="selection-info" v-if="selectedFrame && isBboxValid">
+      <div class="selection-info" v-if="selectedFrame && hasValidBoxes">
         <el-descriptions title="当前选择" :column="1" border size="small">
           <el-descriptions-item label="帧索引">
             <el-tag type="primary">{{ selectedFrame.index }}</el-tag>
@@ -17,19 +17,13 @@
             <span class="filename">{{ selectedFrame.filename }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="框选区域">
-            <span class="bbox-info">
-              [{{ Math.round(bbox[0]) }}, {{ Math.round(bbox[1]) }}, 
-               {{ Math.round(bbox[2]) }}, {{ Math.round(bbox[3]) }}]
-            </span>
-          </el-descriptions-item>
-          <el-descriptions-item label="目标ID">
-            <el-input-number 
-              v-model="segmentationParams.obj_id" 
-              :min="1" 
-              :max="10" 
-              size="small"
-              controls-position="right"
-            />
+            <div v-for="(bbox, index) in bboxes" :key="index" class="bbox-item">
+              <el-tag size="small" :color="getColorByObjId(objIds[index])">
+                ID {{ objIds[index] }}: 
+                [{{ Math.round(bbox[0]) }}, {{ Math.round(bbox[1]) }}, 
+                {{ Math.round(bbox[2]) }}, {{ Math.round(bbox[3]) }}]
+              </el-tag>
+            </div>
           </el-descriptions-item>
         </el-descriptions>
       </div>
@@ -46,7 +40,7 @@
       </div>
 
       <!-- 分割参数设置 -->
-      <div class="segmentation-params" v-if="selectedFrame && isBboxValid">
+      <div class="segmentation-params" v-if="selectedFrame && hasValidBoxes">
         <el-divider content-position="left">分割参数</el-divider>
         
         <div class="param-group">
@@ -92,7 +86,7 @@
       </div>
 
       <!-- 操作按钮 -->
-      <div class="action-buttons" v-if="selectedFrame && isBboxValid">
+      <div class="action-buttons" v-if="selectedFrame && hasValidBoxes">
         <el-divider content-position="left">操作控制</el-divider>
         
         <div class="button-group">
@@ -181,14 +175,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Camera, VideoCamera, Refresh } from '@element-plus/icons-vue'
 import { api } from '../services/api'
 
+// 修改props定义
 const props = defineProps({
   selectedFrame: {
     type: Object,
     default: null
   },
-  bbox: {
+  bboxes: { // 改为接收多个框
     type: Array,
-    default: () => [0, 0, 0, 0]
+    default: () => []
+  },
+  objIds: { // 新增：接收obj_ids
+    type: Array,
+    default: () => []
   },
   folderPath: {
     type: String,
@@ -200,7 +199,6 @@ const emit = defineEmits(['reset-selection', 'segment-single', 'segment-batch'])
 
 // 响应式数据
 const segmentationParams = ref({
-  obj_id: 1,
   conf_threshold: 0.0,
   output_format: 'overlay',
   random_color: false,
@@ -222,19 +220,21 @@ const taskStatus = ref({
 })
 
 // 计算属性
-const isBboxValid = computed(() => {
-  return props.bbox && props.bbox[2] > 5 && props.bbox[3] > 5
+// 修改：检查是否有有效的框选区域
+const hasValidBoxes = computed(() => {
+  return props.bboxes && props.bboxes.length > 0 && 
+         props.bboxes.every(bbox => bbox[2] > 5 && bbox[3] > 5)
 })
 
 const getEmptyStateTitle = computed(() => {
   if (!props.selectedFrame) return '请先选择帧图像'
-  if (!isBboxValid.value) return '请设置有效的框选区域'
+  if (!hasValidBoxes.value) return '请设置有效的框选区域'
   return '准备就绪'
 })
 
 const getEmptyStateDescription = computed(() => {
   if (!props.selectedFrame) return '在左侧选择一帧图像并在画布上进行框选'
-  if (!isBboxValid.value) return '框选区域太小，请选择更大的区域进行分割'
+  if (!hasValidBoxes.value) return '框选区域太小，请选择更大的区域进行分割'
   return '可以开始分割操作了'
 })
 
@@ -249,7 +249,7 @@ const convertBboxToBackendFormat = (bbox) => {
 }
 
 const handleSingleSegment = async () => {
-  if (!props.selectedFrame || !isBboxValid.value || !props.folderPath) {
+  if (!props.selectedFrame || !hasValidBoxes.value || !props.folderPath) {
     ElMessage.error('请先选择帧图像、设置有效的框选区域并确保文件夹路径正确')
     return
   }
@@ -261,8 +261,8 @@ const handleSingleSegment = async () => {
       video_path: props.folderPath,
       frame_idx: props.selectedFrame.index,
       filename: props.selectedFrame.filename,
-      obj_id: segmentationParams.value.obj_id,
-      bbox: convertBboxToBackendFormat(props.bbox),
+      obj_ids: props.objIds, // 使用传入的obj_ids
+      bboxes: props.bboxes.map(bbox => convertBboxToBackendFormat(bbox)), // 使用传入的bboxes
       conf_threshold: segmentationParams.value.conf_threshold
     }
 
@@ -298,7 +298,7 @@ const handleSingleSegment = async () => {
 }
 
 const handleBatchSegment = async () => {
-  if (!props.selectedFrame || !isBboxValid.value || !props.folderPath) {
+  if (!props.selectedFrame || !hasValidBoxes.value || !props.folderPath) {
     ElMessage.error('请先选择帧图像、设置有效的框选区域并确保文件夹路径正确')
     return
   }
@@ -329,8 +329,8 @@ const handleBatchSegment = async () => {
       video_path: props.folderPath,
       filename: props.selectedFrame.filename,
       frame_indices: frameIndices,
-      obj_ids: Array(frameIndices.length).fill(segmentationParams.value.obj_id),
-      bboxes: Array(frameIndices.length).fill(convertBboxToBackendFormat(props.bbox)),
+      obj_ids_list: Array(frameIndices.length).fill(props.objIds), // 改为obj_ids_list
+      bboxes_list: Array(frameIndices.length).fill(props.bboxes.map(bbox => convertBboxToBackendFormat(bbox))), // 改为bboxes_list
       conf_threshold: segmentationParams.value.conf_threshold
     }
 
@@ -366,6 +366,25 @@ const handleBatchSegment = async () => {
   } finally {
     batchSegmentLoading.value = false
   }
+}
+
+const getColorByObjId = (objId, asRGB = false) => {
+  const colors = [
+    '#e6a23c', '#67c23a', '#409eff', '#f56c6c', '#909399',
+    '#b37feb', '#ff85c0', '#5cdbd3', '#ff9c6e', '#fff566'
+  ]
+  const color = colors[(objId - 1) % colors.length]
+  
+  if (asRGB) {
+    // 将hex颜色转换为rgb字符串
+    const hex = color.replace('#', '')
+    const r = parseInt(hex.substr(0, 2), 16)
+    const g = parseInt(hex.substr(2, 2), 16)
+    const b = parseInt(hex.substr(4, 2), 16)
+    return `${r}, ${g}, ${b}`
+  }
+  
+  return color
 }
 
 const startTaskPolling = (taskId) => {  // 移除 type 参数
@@ -573,6 +592,14 @@ const handleResetSelection = () => {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
+  }
+}
+
+.bbox-item {
+  margin-bottom: 4px;
+  
+  &:last-child {
+    margin-bottom: 0;
   }
 }
 
