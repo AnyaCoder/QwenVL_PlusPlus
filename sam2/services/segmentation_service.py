@@ -88,5 +88,4 @@ class SegmentationService:
             raise
 
 
-# 全局分割服务实例
 segmentation_service = SegmentationService()

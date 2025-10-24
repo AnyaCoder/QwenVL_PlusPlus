@@ -34,12 +34,10 @@ class ModelService:
         try:
             logger.info(f"正在加载Qwen-VL模型: {settings.qwen_model_path}")
 
-            
             self.models["qwen_processor"] = AutoProcessor.from_pretrained(
                 settings.qwen_model_path
             )
 
-            
             self.models["qwen_llm"] = LLM(
                 model=settings.qwen_model_path,
                 max_model_len=settings.max_model_len,
@@ -102,7 +100,6 @@ class ModelService:
         self.models.clear()
         torch.cuda.empty_cache()
         logger.info("所有模型资源已清理")
-
 
 
 model_service = ModelService()

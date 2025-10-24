@@ -38,6 +38,6 @@ class VideoAnalysisRequest(BaseModel):
 class VideoAnalysisResponse(BaseModel):
     task_id: str
     status: str
-    grid_images: Optional[List[str]] = None  
+    grid_images: Optional[List[str]] = None
     results: Optional[List[dict]] = None
     error: Optional[str] = None

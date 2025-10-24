@@ -103,7 +103,6 @@ class VisionAnalysisService:
         image_width, image_height = image.size
         x_min, y_min, x_max, y_max = result["bbox_2d"]
 
-        
         x_min = x_min / 1000 * image_width
         y_min = y_min / 1000 * image_height
         x_max = x_max / 1000 * image_width
@@ -254,7 +253,7 @@ class VisionAnalysisService:
     def analyze_video(self, request: VideoAnalysisRequest) -> Dict[str, Any]:
         """执行视频分析的主函数"""
         try:
-            
+
             user_prompt = (
                 f'Given the query "{request.user_query}", for each frame, '
                 "detect and localize the visual content described by the given textual query in JSON format. "
@@ -262,7 +261,6 @@ class VisionAnalysisService:
                 '[{"time": 1.0, "bbox_2d": [x_min_1, y_min_1, x_max_1, y_max_1], "label": ""}, {"time": 2.0, "bbox_2d": [x_min_2, y_min_2, x_max_2, y_max_2], "label": ""}, ...].'
             )
 
-            
             messages = self.get_messages_with_images(
                 request.video_dir,
                 user_prompt,
@@ -272,15 +270,13 @@ class VisionAnalysisService:
             )
 
             logger.info("开始模型推理...")
-            
+
             response = self.inference(messages)
             logger.info("模型推理完成")
 
-            
             results = self.parse_json(response)
             logger.info(f"解析到 {len(results)} 个检测结果")
 
-            
             grid_images = self.generate_all_grids_base64(
                 results, messages, request.grid_size, request.columns
             )
@@ -295,7 +291,6 @@ class VisionAnalysisService:
         except Exception as e:
             logger.error(f"视频分析失败: {str(e)}")
             return {"status": "error", "error": str(e)}
-
 
 
 vision_service = VisionAnalysisService()
