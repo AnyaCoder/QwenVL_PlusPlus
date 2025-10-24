@@ -113,7 +113,7 @@ import { api } from '../services/api'
 
 const emit = defineEmits(['frame-selected', 'folder-update'])
 
-const folderPath = ref('../videos/output_0_mp4')
+const folderPath = ref('不支持相对路径，只能用绝对路径')
 const frames = ref([])
 const selectedFrameIndex = ref(null)
 const scanning = ref(false)
