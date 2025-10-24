@@ -5,13 +5,15 @@ from threading import Thread
 
 from loguru import logger
 
-from config.settings import TASK_QUEUE_MAXSIZE
-from models.schemas import SegmentBatchRequest, SegmentRequest
+from config.settings import settings
+from models.schemas import (SegmentBatchRequest, SegmentRequest,
+                            VideoAnalysisRequest)
 from services.segmentation_service import segmentation_service
+from services.vision_service import vision_service
 
 # 全局任务状态和队列
 TASK_STATUS = {}
-TASK_QUEUE = Queue(maxsize=TASK_QUEUE_MAXSIZE)
+TASK_QUEUE = Queue(maxsize=settings.task_queue_maxsize)
 
 
 def worker_loop():
@@ -42,11 +44,16 @@ def worker_loop():
                     for idx, img_b64 in results.items():
                         TASK_STATUS[task_id]["frames"][idx] = "done"
                     result = results
+                elif isinstance(req, VideoAnalysisRequest):
+                    # 视频分析任务
+                    result = vision_service.analyze_video(req)
+                    TASK_STATUS[task_id]["result"] = result
                 else:
                     raise ValueError(f"Unknown request type: {type(req)}")
 
                 TASK_STATUS[task_id]["status"] = "done"
-                TASK_STATUS[task_id]["result"] = result
+                if not isinstance(req, VideoAnalysisRequest):
+                    TASK_STATUS[task_id]["result"] = result
                 response_queue.put(("ok", result))
 
             except Exception as e:
@@ -86,6 +93,7 @@ def get_task_status(task_id: str):
     task_info = TASK_STATUS[task_id]
     if task_info["status"] in ["done", "error"]:
         r_info = deepcopy(task_info)
+        del task_info
         return r_info
 
     return {"status": task_info["status"], "task_id": task_id}

@@ -1,13 +1,34 @@
 import torch
+from pydantic import BaseModel
 
-# 模型配置
-MODEL_CFG = "configs/sam2.1/sam2.1_hiera_l.yaml"
-CKPT_PATH = "../checkpoints/sam2.1_hiera_large.pt"
 
-# 设备配置
-VIDEO_DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-IMAGE_DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+class Settings(BaseModel):
+    # 模型配置
+    model_cfg: str = "configs/sam2.1/sam2.1_hiera_l.yaml"
+    ckpt_path: str = "../checkpoints/sam2.1_hiera_large.pt"
+    qwen_model_path: str = (
+        "/data/ZhouRongzhi/.cache/huggingface/hub/models--Qwen--Qwen3-VL-8B-Instruct/snapshots/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b/"
+    )
+    # 设备配置
+    video_device: str = "cuda:6" if torch.cuda.is_available() else "cpu"
+    image_device: str = "cuda:7" if torch.cuda.is_available() else "cpu"
 
-# 队列配置
-MAX_QUEUE_WAIT_TIME = 30
-TASK_QUEUE_MAXSIZE = 5
+    # Qwen-VL 推理参数
+    max_model_len: int = 32768
+    llm_seed: int = 42
+    temperature: float = 0.7
+    top_p: float = 0.8
+    top_k: int = 20
+    repetition_penalty: float = 1.0
+    presence_penalty: float = 1.5
+    max_new_tokens: int = 4096
+
+    # 队列配置
+    max_queue_wait_time: int = 30
+    task_queue_maxsize: int = 5
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()

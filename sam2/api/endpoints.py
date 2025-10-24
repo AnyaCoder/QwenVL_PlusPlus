@@ -1,14 +1,16 @@
 import os
-from fastapi import HTTPException, Query
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from models.schemas import (ScanFolderRequest, SegmentBatchRequest,
-                            SegmentRequest)
+                            SegmentRequest, VideoAnalysisRequest,
+                            VideoAnalysisResponse)
 from services.file_service import scan_folder_for_frames
 from worker.task_worker import enqueue_task, get_task_status
 
 
-def setup_routes(app):
+def setup_routes(app: FastAPI):
     """设置API路由"""
 
     @app.post("/scan_folder")
@@ -29,7 +31,9 @@ def setup_routes(app):
     def get_frame_image(folder_path: str = Query(...), filename: str = Query(...)):
         """返回指定帧图像内容"""
         if not os.path.isabs(folder_path):
-            raise HTTPException(status_code=400, detail="不支持相对路径，只能用绝对路径")
+            raise HTTPException(
+                status_code=400, detail="不支持相对路径，只能用绝对路径"
+            )
 
         file_path = os.path.join(folder_path, filename)
         if not os.path.exists(file_path):
@@ -50,6 +54,12 @@ def setup_routes(app):
     def segment_frames_api(req: SegmentBatchRequest):
         """提交多帧分割任务"""
         return enqueue_task(req)
+
+    @app.post("/analyze_video", response_model=VideoAnalysisResponse)
+    def analyze_video_api(req: VideoAnalysisRequest):
+        """提交视频分析任务"""
+        result = enqueue_task(req)
+        return VideoAnalysisResponse(task_id=result["task_id"], status=result["status"])
 
     @app.get("/task_status/{task_id}")
     def task_status_api(task_id: str):

@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from api.endpoints import setup_routes
-from config.settings import CKPT_PATH, IMAGE_DEVICE, MODEL_CFG, VIDEO_DEVICE
 from services.model_service import model_service
 from worker.task_worker import TASK_QUEUE, TASK_STATUS, worker_loop
 
@@ -25,8 +24,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="SAM2 Video Segmentation Service",
-    description="Asynchronous queue-based video segmentation API",
+    title="SAM2 + Qwen-VL Video Analysis Service",
+    description="视频分割和分析服务，集成SAM2和Qwen-VL模型",
 )
 
 # 添加CORS中间件

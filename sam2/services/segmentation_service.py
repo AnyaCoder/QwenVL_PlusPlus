@@ -11,10 +11,6 @@ from utils.video_utils import extract_frames_from_video
 
 
 class SegmentationService:
-    def __init__(self):
-        self.video_predictor = model_service.get_model("video_predictor")
-        self.image_predictor = model_service.get_model("image_predictor")
-
     def segment_image(self, req: SegmentRequest):
         """单图像多框分割"""
         try:
@@ -25,10 +21,11 @@ class SegmentationService:
             image = Image.open(image_path)
             image = np.array(image.convert("RGB"))
 
-            self.image_predictor.set_image(image)
-            input_boxes = np.array(req.bboxes, dtype=np.float32)
+            image_predictor = model_service.get_model("image_predictor")
+            image_predictor.set_image(image)
 
-            masks, scores, _ = self.image_predictor.predict(
+            input_boxes = np.array(req.bboxes, dtype=np.float32)
+            masks, scores, _ = image_predictor.predict(
                 point_coords=None,
                 point_labels=None,
                 box=input_boxes,
@@ -63,10 +60,11 @@ class SegmentationService:
                 image = Image.open(image_path)
                 image = np.array(image.convert("RGB"))
 
-                self.image_predictor.set_image(image)
+                image_predictor = model_service.get_model("image_predictor")
+                image_predictor.set_image(image)
 
                 input_boxes = np.array(bboxes, dtype=np.float32)
-                masks, scores, _ = self.image_predictor.predict(
+                masks, scores, _ = image_predictor.predict(
                     point_coords=None,
                     point_labels=None,
                     box=input_boxes,
