@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import re
 from io import BytesIO
 from typing import Any, Dict, List
 
@@ -10,7 +11,7 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 from loguru import logger
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from vllm import SamplingParams
 
 from config.settings import settings
@@ -66,11 +67,12 @@ class VisionAnalysisService:
     ) -> Image.Image:
         """在图像上添加时间戳文本"""
         draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype("LXGWWenKaiGB-Regular.ttf", 40)
         draw.text(
             (10, 10),
             f"Time: {time_str}s",
             fill="red",
-            stroke_width=2,
+            stroke_width=20,
             stroke_fill="white",
         )
         return image
@@ -79,12 +81,14 @@ class VisionAnalysisService:
         self, messages: List[Dict], timestamp: float
     ) -> Image.Image:
         """根据时间戳从消息中获取对应的图像"""
-        time_str = f"{timestamp:.2f}"
-
-        for content_idx, content in enumerate(messages[0]["content"]):
-            if content["type"] == "text" and time_str in content["text"]:
-                if content_idx + 1 < len(messages[0]["content"]):
-                    next_content = messages[0]["content"][content_idx + 1]
+        pattern = r"<(\d+\.\d+) seconds>"
+        contents = messages[0]["content"]
+        for content_idx, content in enumerate(contents):
+            if content["type"] == "text" and "seconds>" in content["text"]:
+                match = re.search(pattern, content["text"])
+                image_sec = float(match.group(1))
+                if content_idx + 1 < len(contents) and image_sec >= timestamp:
+                    next_content = contents[content_idx + 1]
                     if next_content["type"] == "image":
                         image_url = next_content["image"]
                         if image_url.startswith("file://"):
@@ -143,7 +147,7 @@ class VisionAnalysisService:
             logger.info(f"处理网格 {grid_idx + 1}: 结果 {start_idx + 1}-{end_idx}")
 
             grid_vis_images = []
-            for result in grid_results:
+            for i, result in enumerate(grid_results):
                 processed_image = self.process_single_result(result, messages)
                 if processed_image:
                     grid_vis_images.append(processed_image)
@@ -254,29 +258,20 @@ class VisionAnalysisService:
         """执行视频分析的主函数"""
         try:
 
-            user_prompt = (
-                f'Given the query "{request.user_query}", for each frame, '
-                "detect and localize the visual content described by the given textual query in JSON format. "
-                "If the visual content does not exist in a frame, skip that frame. bbox_2d and label sometimes varies over time. Output Format: "
-                '[{"time": 1.0, "bbox_2d": [x_min_1, y_min_1, x_max_1, y_max_1], "label": ""}, {"time": 2.0, "bbox_2d": [x_min_2, y_min_2, x_max_2, y_max_2], "label": ""}, ...].'
-            )
-
             messages = self.get_messages_with_images(
                 request.video_dir,
-                user_prompt,
+                request.user_prompt,
                 request.original_fps,
                 request.target_fps,
                 request.frames_needed,
             )
-
-            logger.info("开始模型推理...")
+            logger.info(f"开始模型推理...")
 
             response = self.inference(messages)
-            logger.info("模型推理完成")
+            logger.info(f"模型推理完成, response:\n {response}")
 
             results = self.parse_json(response)
             logger.info(f"解析到 {len(results)} 个检测结果")
-
             grid_images = self.generate_all_grids_base64(
                 results, messages, request.grid_size, request.columns
             )

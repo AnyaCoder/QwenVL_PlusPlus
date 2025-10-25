@@ -27,7 +27,7 @@ class ScanFolderRequest(BaseModel):
 
 class VideoAnalysisRequest(BaseModel):
     video_dir: str
-    user_query: str
+    user_prompt: str
     original_fps: float = Field(default=12.5, ge=1.0, le=60.0)
     target_fps: float = Field(default=2.0, ge=0.1, le=30.0)
     frames_needed: int = Field(default=60, ge=1, le=200)

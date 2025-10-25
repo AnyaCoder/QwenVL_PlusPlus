@@ -15,7 +15,7 @@ class Settings(BaseModel):
 
     # Qwen-VL 推理参数
     max_model_len: int = 32768
-    llm_seed: int = 42
+    llm_seed: int = 3407
     temperature: float = 0.7
     top_p: float = 0.8
     top_k: int = 20

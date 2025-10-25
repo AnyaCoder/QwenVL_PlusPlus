@@ -11,11 +11,11 @@ class VideoAnalysisClient:
     def __init__(self, base_url="http://localhost:8000"):
         self.base_url = base_url
 
-    def submit_analysis_task(self, video_dir, user_query, **kwargs):
+    def submit_analysis_task(self, video_dir, user_prompt, **kwargs):
         """提交视频分析任务"""
         request_data = {
             "video_dir": video_dir,
-            "user_query": user_query,
+            "user_prompt": user_prompt,
             "original_fps": kwargs.get("original_fps", 12.5),
             "target_fps": kwargs.get("target_fps", 2.0),
             "frames_needed": kwargs.get("frames_needed", 60),
@@ -39,8 +39,6 @@ class VideoAnalysisClient:
             task_info = response.json()
             status = task_info["status"]
 
-            print(f"任务状态: {status}")
-
             if status == "done":
                 return task_info
             elif status == "error":
@@ -62,11 +60,10 @@ class VideoAnalysisClient:
 
         saved_files = []
         for i, img_base64 in enumerate(grid_images_base64):
-            # 解码base64图像
+
             img_data = base64.b64decode(img_base64)
             img = Image.open(BytesIO(img_data))
 
-            # 保存图像
             output_path = f"{output_dir}/grid_{i+1}.jpg"
             img.save(output_path)
             saved_files.append(output_path)
@@ -74,33 +71,29 @@ class VideoAnalysisClient:
 
         return saved_files
 
-    def analyze_video_with_polling(self, video_dir, user_query, **kwargs):
+    def analyze_video_with_polling(self, video_dir, user_prompt, **kwargs):
         """完整的视频分析流程（提交任务 + 轮询结果）"""
         print("提交视频分析任务...")
-        submit_result = self.submit_analysis_task(video_dir, user_query, **kwargs)
+        submit_result = self.submit_analysis_task(video_dir, user_prompt, **kwargs)
         task_id = submit_result["task_id"]
 
         print(f"任务已提交，ID: {task_id}")
         print("开始轮询任务状态...")
 
-        # 轮询直到任务完成
         final_result = self.poll_task_status(task_id)
 
-        # 提取分析结果
         analysis_result = final_result["result"]
 
         if analysis_result["status"] == "success":
             print(f"分析成功！共生成 {analysis_result['grid_count']} 个网格图像")
             print(f"检测到 {len(analysis_result['results'])} 个目标")
 
-            # 保存网格图像
             if analysis_result["grid_images"]:
                 saved_files = self.save_base64_images(
                     analysis_result["grid_images"], kwargs.get("output_dir", "output")
                 )
                 print(f"已保存 {len(saved_files)} 个网格图像")
 
-            # 显示部分检测结果
             print("\n前5个检测结果:")
             for i, result in enumerate(analysis_result["results"][:5]):
                 print(
@@ -118,11 +111,14 @@ def main():
     """使用示例"""
     client = VideoAnalysisClient()
 
-    # 分析参数
     video_dir = "../videos/s050_camera_basler_south_50mm"
-    user_query = "At first there is a white van stopped in the middle of the road. Track that van."
-
-    # 可选参数
+    user_query = "Vehicles that collided with each other."
+    user_prompt = (
+        f'Given the query "{user_query}", for each frame, '
+        "detect and localize the visual content described by the given textual query in JSON format. "
+        "If the visual content does not exist in a frame, skip that frame. Output Format: "
+        '[{"time": 1.0, "bbox_2d": [x_min, y_min, x_max, y_max], "label": "car"}, {"time": 2.0, "bbox_2d": [x_min, y_min, x_max, y_max], "label": "truck"}, ...].'
+    )
     analysis_params = {
         "original_fps": 12.5,
         "target_fps": 2.0,
@@ -134,12 +130,10 @@ def main():
 
     try:
         result = client.analyze_video_with_polling(
-            video_dir, user_query, **analysis_params
+            video_dir, user_prompt, **analysis_params
         )
 
-        # 可以进一步处理结果...
         if result["status"] == "success":
-            # 保存检测结果到JSON文件
             with open("detection_results.json", "w") as f:
                 json.dump(result["results"], f, indent=2)
             print("检测结果已保存到 detection_results.json")

@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import FastAPI, HTTPException, Query
@@ -8,6 +9,19 @@ from models.schemas import (ScanFolderRequest, SegmentBatchRequest,
                             VideoAnalysisResponse)
 from services.file_service import scan_folder_for_frames
 from worker.task_worker import enqueue_task, get_task_status
+
+
+class RouteFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        """record.args: ('127.0.0.1:42770', 'GET', '/task_status/7431d23a-a898-4151-b2e8-00d1057afb18', '1.1', 200)"""
+        path = record.args[2] if len(record.args) >= 3 else ""
+        status = record.args[4] if len(record.args) >= 5 else -1
+
+        return not (path.startswith("/task_status/") and status == 200)
+
+
+for handler in logging.getLogger("uvicorn.access").handlers:
+    handler.addFilter(RouteFilter())
 
 
 def setup_routes(app: FastAPI):

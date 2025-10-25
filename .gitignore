@@ -22,9 +22,11 @@ pnpm-debug.log*
 *.sln
 *.sw?
 *.jpg
+*.diff
 
 *-lock.json
 checkpoints/
 datasets/
 sam2/sam2/
 videos/
+Qwen3-VL/
