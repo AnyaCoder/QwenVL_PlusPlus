@@ -62,3 +62,11 @@ def encode_image_to_base64(img_array: np.ndarray) -> str:
     buf = BytesIO()
     Image.fromarray(img_array).save(buf, format="JPEG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def decode_base64_to_image(base64_string: str) -> Image.Image:
+    """将base64编码的JPEG字符串转换回numpy图像数组"""
+    img_data = base64.b64decode(base64_string)
+    buf = BytesIO(img_data)
+    img = Image.open(buf)
+    return img

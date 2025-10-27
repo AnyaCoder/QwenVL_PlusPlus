@@ -2,13 +2,12 @@ import os
 from contextlib import asynccontextmanager
 from threading import Thread
 
+from api.endpoints import setup_routes
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-
-from api.endpoints import setup_routes
 from services.model_service import model_service
-from worker.task_worker import TASK_QUEUE, TASK_STATUS, worker_loop
+from worker.task_worker import worker_loop
 
 
 @asynccontextmanager

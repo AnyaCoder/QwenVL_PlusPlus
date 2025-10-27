@@ -2,9 +2,8 @@ import os
 
 import numpy as np
 from loguru import logger
-from PIL import Image
-
 from models.schemas import SegmentBatchRequest, SegmentRequest
+from PIL import Image
 from services.model_service import model_service
 from utils.image_utils import encode_image_to_base64, overlay_mask
 from utils.video_utils import extract_frames_from_video

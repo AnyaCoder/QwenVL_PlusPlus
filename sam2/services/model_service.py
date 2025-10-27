@@ -1,10 +1,10 @@
 import torch
+from config.settings import settings
 from loguru import logger
 from qwen_vl_utils import process_vision_info
 from transformers import AutoProcessor
-from vllm import LLM
+from vllm import LLM, SamplingParams
 
-from config.settings import settings
 from sam2.build_sam import build_sam2, build_sam2_video_predictor
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 
@@ -41,6 +41,8 @@ class ModelService:
             self.models["qwen_llm"] = LLM(
                 model=settings.qwen_model_path,
                 max_model_len=settings.max_model_len,
+                tensor_parallel_size=settings.tensor_parallel_size,
+                mm_encoder_tp_mode=settings.mm_encoder_tp_mode,
                 seed=settings.llm_seed,
             )
 
@@ -66,11 +68,9 @@ class ModelService:
         """获取Qwen-VL LLM实例"""
         return self.models.get("qwen_llm")
 
-    def prepare_qwen_inputs(self, messages):
+    def inference(self, messages) -> str:
         """准备Qwen-VL推理输入"""
         processor = self.get_qwen_processor()
-        if not processor:
-            raise ValueError("Qwen-VL处理器未初始化")
 
         text = processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
@@ -89,11 +89,26 @@ class ModelService:
         if video_inputs is not None:
             mm_data["video"] = video_inputs
 
-        return {
-            "prompt": text,
-            "multi_modal_data": mm_data,
-            "mm_processor_kwargs": video_kwargs,
-        }
+        sampling_params = SamplingParams(
+            temperature=settings.temperature,
+            max_tokens=settings.max_new_tokens,
+            seed=settings.llm_seed,
+            top_p=settings.top_p,
+            top_k=settings.top_k,
+            repetition_penalty=settings.repetition_penalty,
+            presence_penalty=settings.presence_penalty,
+            stop_token_ids=[],
+        )
+        llm = self.get_qwen_llm()
+        inputs = [
+            {
+                "prompt": text,
+                "multi_modal_data": mm_data,
+                "mm_processor_kwargs": video_kwargs,
+            }
+        ]
+        outputs = llm.generate(inputs, sampling_params=sampling_params)
+        return outputs[0].outputs[0].text
 
     def cleanup(self):
         """清理模型资源"""

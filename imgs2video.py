@@ -81,7 +81,7 @@ if __name__ == '__main__':
     argparser.add_argument("--max-duration", type=str, default=30)
     args = argparser.parse_args()
     
-    image_dir = args.image_dird
+    image_dir = args.image_dir
     output_path = str(image_dir).strip("/") + ".mp4"
     fps = float(args.fps)
     max_duration = float(args.max_duration)

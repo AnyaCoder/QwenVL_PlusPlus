@@ -23,6 +23,7 @@ pnpm-debug.log*
 *.sw?
 *.jpg
 *.diff
+*.ipynb
 
 *-lock.json
 checkpoints/

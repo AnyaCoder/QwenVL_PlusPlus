@@ -111,13 +111,14 @@ def main():
     """使用示例"""
     client = VideoAnalysisClient()
 
-    video_dir = "../videos/s050_camera_basler_south_50mm"
-    user_query = "Vehicles that collided with each other."
+    video_dir = "../datasets/_images/s050_camera_basler_south_50mm"
+    user_query = "first seen yellow car colliding"
+    # user_query = "all footage of the two cars colliding within 10s before and after the incident。"
     user_prompt = (
         f'Given the query "{user_query}", for each frame, '
         "detect and localize the visual content described by the given textual query in JSON format. "
         "If the visual content does not exist in a frame, skip that frame. Output Format: "
-        '[{"time": 1.0, "bbox_2d": [x_min, y_min, x_max, y_max], "label": "car"}, {"time": 2.0, "bbox_2d": [x_min, y_min, x_max, y_max], "label": "truck"}, ...].'
+        '[{"time": 0.2, "bbox_2d": [x_min, y_min, x_max, y_max], "label": "car"}, {"time": 1.0, "bbox_2d": [x_min, y_min, x_max, y_max], "label": "truck"}, ...].'
     )
     analysis_params = {
         "original_fps": 12.5,

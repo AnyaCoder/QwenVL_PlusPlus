@@ -1,12 +1,13 @@
 import logging
 import os
 
+from config.settings import settings
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
-
 from models.schemas import (ScanFolderRequest, SegmentBatchRequest,
                             SegmentRequest, VideoAnalysisRequest,
-                            VideoAnalysisResponse)
+                            VideoAnalysisResponse, VisionAnalysisRequest,
+                            VisionAnalysisResponse)
 from services.file_service import scan_folder_for_frames
 from worker.task_worker import enqueue_task, get_task_status
 
@@ -74,6 +75,14 @@ def setup_routes(app: FastAPI):
         """提交视频分析任务"""
         result = enqueue_task(req)
         return VideoAnalysisResponse(task_id=result["task_id"], status=result["status"])
+
+    @app.post("/analyze_image", response_model=VisionAnalysisResponse)
+    def analyze_image_api(req: VisionAnalysisRequest):
+        """提交视频分析任务"""
+        result = enqueue_task(req)
+        return VisionAnalysisResponse(
+            task_id=result["task_id"], status=result["status"]
+        )
 
     @app.get("/task_status/{task_id}")
     def task_status_api(task_id: str):
